@@ -13,7 +13,7 @@ We report our compliance with this to the Minister quarterly and we are occasion
 ## For Data Managers
 
  
-Fill in the [google form](https://docs.google.com/forms/d/e/1FAIpQLSeirs2G_vsjmg4hHymGJDI5axUHuDk9b-0l5GMQtDhuihnVCA/viewform), answering the relvant dataset questions. Use your LINZ email address and write the dataset names to be as close as possible to the LDS dataset names. Multiple datasets can be separated by a comma.
+Fill in the [google form](https://docs.google.com/forms/d/e/1FAIpQLSeirs2G_vsjmg4hHymGJDI5axUHuDk9b-0l5GMQtDhuihnVCA/viewform), answering the relevant dataset questions. Use your LINZ email address and write the dataset names to be as close as possible to the LDS dataset names. Multiple datasets can be separated by a comma.
 
 Make sure you hit 'save' at the end.
 
@@ -31,7 +31,7 @@ To record the datasets that have undergone the NZGOAL Frame Work Decision Tree p
 
 ### Performing the Audit
 
-The audit is perform by running a Python script that reads the LDS RSS feed and collects all the LDS ids between user supplied dates (those dates that the user wants to audit to bound). The script then compares these LDS layer ids with the exported Google Form Sheet, first confirming the ids are in the Google Sheet (thus confirming the LDS dataset went through the NZGOAL Framework Decision process) and then groups each layer based on the NZGOAL Questionnaire forms outcomes.
+The audit is perform by running a Python script that lists the layers,tables and datasets from the LDS API and collects all the LDS ids between user supplied dates (those dates that the user wants to audit to bound). The script then compares these LDS layer ids with the exported Google Form Sheet, first confirming the ids are in the Google Sheet (thus confirming the LDS dataset went through the NZGOAL Framework Decision process) and then groups each layer based on the NZGOAL Questionnaire forms outcomes.
 
  
 
@@ -56,14 +56,13 @@ Now that the Google sheet has been exported, pull the audit script from the [git
  
 In the terminal run the below. The script will prompt the user dates and path to .tsv
 
-   '''python <path to script>/nzgoal_audit.py''' 
+   '''python <path to script>/nzgoal_audit.py --tsv <path to script>/nzgoal.tsv -fd dd/mm/yy -td dd/mm/yy''' 
 
-  
 
 The script takes three user inputs. 
-* date_from: only consider LDS layers published after this date
-* date_to: only consider LDS layers published prior to this date
-* tsv path: full directory path to the Google Form exported tsv.
+* --from-date: (-fd) only consider LDS layers published after this date
+* --to-date: (-td) only consider LDS layers published prior to this date
+* --tsv-path: (-tsv) full directory path to the Google Form exported tsv.
 
 ### Saving the results
 
