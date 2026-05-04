@@ -47,7 +47,7 @@ Now that the Google sheet has been exported, pull the audit script from the [git
 
 In the terminal run the below. The script will prompt the user dates and path to .tsv
 
-'''python <path to script>/nzgoal_audit.py --tsv <path to script>/nzgoal.tsv -fd dd/mm/yy -td dd/mm/yy'''
+'''python <path to script>/nzgoal_audit.py -tsv <path to script>/nzgoal.tsv -fd dd/mm/yy -td dd/mm/yy'''
 
 The script takes three user inputs.
 

@@ -68,16 +68,28 @@ def _next_url(link_header: str | None) -> str | None:
     return None
 
 
+def _parse_iso_date(date_str: str) -> dt.date | None:
+    """Parse ISO 8601 dates with or without microseconds."""
+    if not date_str:
+        return None
+    try:
+        # Try parsing with microseconds first
+        return dt.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ").date()
+    except ValueError:
+        # Fall back to parsing without microseconds
+        return dt.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").date()
+
+
 def fetch_all(
     root_url: str, date_from: dt.date | None = None, date_to: dt.date | None = None
-) -> list[tuple[int, str, str]]:
+) -> list[tuple[str, str, str]]:
     """Return a list of (id, title, published_at) from all pages.
 
     If date_from/date_to are provided, only include items whose published_at
     date lies within that inclusive range. If neither is provided, all
     items are returned.
     """
-    results: list[tuple[int, str, str]] = []
+    results: list[tuple[str, str, str]] = []
     url: str | None = root_url
     while url:
         response = requests.get(url)
@@ -87,13 +99,8 @@ def fetch_all(
         for item in items:
             item_id = item.get("id")
             title = item.get("title")
-            published_at = (
-                dt.datetime.strptime(
-                    item.get("first_published_at"), "%Y-%m-%dT%H:%M:%S.%fZ"
-                ).date()
-                if item.get("published_at")
-                else None
-            )
+            date_str = item.get("first_published_at") or item.get("updated_at")
+            published_at = _parse_iso_date(date_str)
             if item_id is None or title is None:
                 continue
             # Apply date filter if requested
@@ -106,7 +113,7 @@ def fetch_all(
                     continue
             results.append(
                 (
-                    int(item_id),
+                    str(item_id),
                     str(title),
                     str(published_at) if published_at is not None else "",
                 )
