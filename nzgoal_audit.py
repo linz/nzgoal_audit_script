@@ -1,3 +1,15 @@
+"""Audit NZGOAL form outcomes against LINZ Data Service items.
+
+This script reads item IDs and expected publish outcomes from a TSV export,
+fetches layers, tables, and datasets from the LDS API (optionally filtered by
+date range), and prints grouped results for:
+- publish
+- publish with restrictions
+- do not publish
+
+It also reports items found on the LDS that are missing from the NZGOAL form.
+"""
+
 import argparse
 import csv
 import datetime as dt
@@ -5,13 +17,15 @@ import re
 import sys
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 LAYERS = "https://data.linz.govt.nz/services/api/v1/layers/"
 TABLES = "https://data.linz.govt.nz/services/api/v1/tables/"
 DATASETS = "https://data.linz.govt.nz/services/api/v1/datasets/"  # Pointclouds are datasets, not layers
 
 
-def read_tsv(tsv_file: str) -> dict[str, str]:
+def _read_tsv(tsv_file: str) -> dict[str, str]:
     """Read a TSV file."""
     with open(tsv_file, "r", encoding="utf-8-sig", newline="") as tsv:
         reader = csv.reader(tsv, delimiter="\t")
@@ -80,7 +94,45 @@ def _parse_iso_date(date_str: str) -> dt.date | None:
         return dt.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").date()
 
 
-def fetch_all(
+def _in_date_range(
+    value: dt.date | None, date_from: dt.date | None, date_to: dt.date | None
+) -> bool:
+    """Return True if value is within the optional inclusive range."""
+    if date_from is None and date_to is None:
+        return True
+    if value is None:
+        return False
+    if date_from is not None and value < date_from:
+        return False
+    if date_to is not None and value > date_to:
+        return False
+    return True
+
+
+def _session() -> requests.Session:
+    """Return a requests Session with automatic retries on transient server errors."""
+    session = requests.Session()
+    retry = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
+def _iter_items(root_url: str) -> list[dict]:
+    """Return all items across paginated API results."""
+    session = _session()
+    all_items: list[dict] = []
+    url: str | None = root_url
+    while url:
+        response = session.get(url)
+        response.raise_for_status()
+        data = response.json()
+        items = data.get("results", data) if isinstance(data, dict) else data
+        all_items.extend(items)
+        url = _next_url(response.headers.get("Link"))
+    return all_items
+
+
+def _fetch_all_layers_tables(
     root_url: str, date_from: dt.date | None = None, date_to: dt.date | None = None
 ) -> list[tuple[str, str, str]]:
     """Return a list of (id, title, published_at) from all pages.
@@ -90,36 +142,72 @@ def fetch_all(
     items are returned.
     """
     results: list[tuple[str, str, str]] = []
-    url: str | None = root_url
-    while url:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        items = data.get("results", data) if isinstance(data, dict) else data
-        for item in items:
-            item_id = item.get("id")
-            title = item.get("title")
-            date_str = item.get("first_published_at") or item.get("updated_at")
-            published_at = _parse_iso_date(date_str)
-            if item_id is None or title is None:
-                continue
-            # Apply date filter if requested
-            if date_from is not None or date_to is not None:
-                if published_at is None:
-                    continue
-                if date_from is not None and published_at < date_from:
-                    continue
-                if date_to is not None and published_at > date_to:
-                    continue
-            results.append(
-                (
-                    str(item_id),
-                    str(title),
-                    str(published_at) if published_at is not None else "",
-                )
+    for item in _iter_items(root_url):
+        item_id = item.get("id")
+        title = item.get("title")
+        published_at = _parse_iso_date(item.get("first_published_at"))
+        if (
+            item_id is None
+            or title is None
+            or not _in_date_range(published_at, date_from, date_to)
+        ):
+            continue
+        results.append(
+            (
+                str(item_id),
+                str(title),
+                str(published_at) if published_at is not None else "",
             )
-        url = _next_url(response.headers.get("Link"))
+        )
     return results
+
+
+def _fetch_all_datasets(
+    root_url: str, date_from: dt.date | None = None, date_to: dt.date | None = None
+) -> list[tuple[str, str, str]]:
+    """Return a list of (id, title, created_at) from all pages.
+
+    If date_from/date_to are provided, only include items whose created_at
+    date lies within that inclusive range. If neither is provided, all
+    items are returned.
+
+    created_at field is retrieved from the dataset details endpoint, as it is not included in the list endpoint.
+    """
+    results: list[tuple[str, str, str]] = []
+    for item in _iter_items(root_url):
+        item_id = item.get("id")
+        title = item.get("title")
+        dataset_url = item.get("url")
+        if item_id is None or title is None or not dataset_url:
+            continue
+
+        dataset_response = _session().get(str(dataset_url))
+        dataset_response.raise_for_status()
+        dataset_item = dataset_response.json()
+        created_at = _parse_iso_date(dataset_item.get("created_at"))
+        if not _in_date_range(created_at, date_from, date_to):
+            continue
+
+        results.append(
+            (
+                str(item_id),
+                str(title),
+                str(created_at) if created_at is not None else "",
+            )
+        )
+    return results
+
+
+def _print_category(
+    title: str,
+    code: str,
+    all_items: list[tuple[str, str, str]],
+    form_data: dict[str, str],
+) -> None:
+    print(f"=== {title} ===")
+    for item_id, name, pub in all_items:
+        if form_data.get(item_id.strip()) == code:
+            print(f"ID {item_id}: {name} ({pub})")
 
 
 def main():
@@ -138,7 +226,7 @@ def main():
 
     tsv_file = args.tsv_file
     print(f"Reading IDs from TSV: {tsv_file}")
-    form_data = read_tsv(tsv_file)
+    form_data = _read_tsv(tsv_file)
 
     date_from = (
         dt.datetime.strptime(args.date_from, "%d/%m/%y").date()
@@ -150,35 +238,30 @@ def main():
     )
 
     print("Fetching all Layers...")
-    layers = fetch_all(LAYERS, date_from, date_to)
+    layers = _fetch_all_layers_tables(LAYERS, date_from, date_to)
     print(f"Fetched {len(layers)} layers")
 
     print("Fetching all Tables...")
-    tables = fetch_all(TABLES, date_from, date_to)
+    tables = _fetch_all_layers_tables(TABLES, date_from, date_to)
     print(f"Fetched {len(tables)} tables")
 
     print("Fetching all Datasets...")
-    datasets = fetch_all(DATASETS, date_from, date_to)
+    datasets = _fetch_all_datasets(DATASETS, date_from, date_to)
     print(f"Fetched {len(datasets)} datasets")
 
     all_items = layers + tables + datasets
 
-    print("=== Layers/tables/datasets Publish status ===")
-    for i, name, pub in all_items:
-        if form_data.get(str(i).strip()) == "pub":
-            print(f"ID {i}: {name} (first_published_at: {pub})")
-
+    _print_category(
+        "Layers/tables/datasets Publish status", "pub", all_items, form_data
+    )
     print()
-    print("=== Layers/tables/datasets Publish With Restrictions ===")
-    for i, name, pub in all_items:
-        if form_data.get(str(i).strip()) == "pwr":
-            print(f"ID {i}: {name} (first_published_at: {pub})")
-
+    _print_category(
+        "Layers/tables/datasets Publish With Restrictions", "pwr", all_items, form_data
+    )
     print()
-    print("=== Layers/tables/datasets Do Not Publish ===")
-    for i, name, pub in all_items:
-        if form_data.get(str(i).strip()) == "dnp":
-            print(f"ID {i}: {name} (first_published_at: {pub})")
+    _print_category(
+        "Layers/tables/datasets Do Not Publish", "dnp", all_items, form_data
+    )
 
     print()
     print("=== Data missing from NZGOAL Audit Form ===")
@@ -189,7 +272,7 @@ def main():
         print("(none)")
     else:
         for i, name, pub in missing_data:
-            print(f"LAYER {i}: {name} (first_published_at: {pub})")
+            print(f"Id {i}: {name} ({pub})")
 
 
 if __name__ == "__main__":
