@@ -55,14 +55,28 @@ The script takes three user inputs.
 - --to-date: (-td) only consider LDS layers published prior to this date
 - --tsv-path: (-tsv) full directory path to the Google Form exported tsv.
 
-### Saving the results
+### Contacting Data Managers
 
-On the final run and report for every quarter, save the files below to Objective (https://linzone/id:fA268176) in case we get externally audited about this.
+After identifying datasets that appear to be missing from the NZGOAL process, contact the relevant data manager and request they complete the NZGOAL Data Publishing Questionnaire.
 
-Need to save:
+If there are a lot of layers to follow up, create and maintain a tracking spreadsheet to record:
 
-- Copy of script code
-- Input (TSV export, see above)
-- Log of script results
+- Dataset/layer name
+- Data manager/team
+- Date contacted
+- Date NZGOAL questionnaire Submitted
 
-''''python <path to script>/nzgoal_audit.py > Q4_results.txt'''
+#### Sample Email
+
+Kia ora,
+
+Our team has done a quick check to make sure all datasets published on the LDS recently have been through the NZGOAL licensing process. We noticed that some layers in your team have not gone through this process yet.
+
+- List
+- Layers
+
+Please submit your dataset through the NZGOAL Data Publishing Questionnaire. It will make sure everything is compliant with the publishing requirements.
+
+You can fill out the form at [NZGOAL Data Publishing Questionnaire](https://docs.google.com/forms/d/e/1FAIpQLSeirs2G_vsjmg4hHymGJDI5axUHuDk9b-0l5GMQtDhuihnVCA/viewform). Use your LINZ email address and list the dataset names as close as possible to the LDS dataset names, separating multiple datasets with a comma. Don't forget to hit "save" at the end.
+
+If you need help or have any questions, feel free to ask.
